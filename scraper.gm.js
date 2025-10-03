@@ -24,8 +24,9 @@ socket.addEventListener("message", (event) => {
             console.log("debug", data);
             break;
         case OP_SCRAPE:
-            console.log("scrape", data);
-            scrape(data);
+            let [url, referer] = split_once(data, "\0");
+            console.log(`scrape ${url} from ${referer}`);
+            scrape(url, referer);
             break;
         default:
             console.log("unknown op", op);
@@ -51,10 +52,13 @@ function encodeOp(op, data) {
 
 //
 
-function scrape(url) {
+function scrape(url, referer) {
     GM_xmlhttpRequest({
         url,
         responseType: "blob",
+        headers: {
+            referer
+        },
         onload: (e) => {
             socket.send(encodeOp(OP_CONTENT, e.status + "\0" + e.responseHeaders));
             socket.send(e.response);

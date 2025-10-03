@@ -7,6 +7,7 @@ use xana_commons_rs::{SimpleIoMap, SimpleIoResult};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScrapeJob {
     pub url: String,
+    pub referer: String,
     pub output: PathBuf,
 }
 

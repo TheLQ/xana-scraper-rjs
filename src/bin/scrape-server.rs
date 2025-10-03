@@ -12,6 +12,7 @@ async fn main() -> ExitCode {
     let config = ScrapeConfig {
         jobs: vec![ScrapeJob {
             url: "https://xana.sh/Aelitasupercomputer.jpg".into(),
+            referer: "https://xana.sh/".into(),
             output: PathBuf::from("./tmpout/xanatest.jpg"),
         }],
         request_throttle: Duration::from_secs(1),

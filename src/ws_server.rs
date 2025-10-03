@@ -101,6 +101,7 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
 
                     Some(ServerOp::Scrape {
                         url: active_job.url.clone(),
+                        referer: active_job.referer.clone(),
                     })
                 }
                 ClientOp::Content { headers_raw } => {
@@ -154,15 +155,15 @@ impl ClientOp {
 }
 
 enum ServerOp {
-    Scrape { url: String },
+    Scrape { url: String, referer: String },
     Debug { text: String },
 }
 
 impl ServerOp {
     fn encode(&self) -> String {
         match self {
-            Self::Scrape { url } => {
-                format!("scrape\0{url}")
+            Self::Scrape { url, referer } => {
+                format!("scrape\0{url}\0{referer}")
             }
             Self::Debug { text } => {
                 format!("debug\0{text}")
@@ -174,7 +175,7 @@ impl ServerOp {
 impl Display for ServerOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Scrape { url } => write!(f, "ScrapeOp for {url}"),
+            Self::Scrape { url, referer } => write!(f, "ScrapeOp for {url} referer {referer}"),
             Self::Debug { text } => write!(f, "DebugOp for {text}"),
         }
     }
