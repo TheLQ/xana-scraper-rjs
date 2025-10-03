@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name        test script
-// @namespace   Violentmonkey Scripts
+// @name        Xana Scraper RJS
+// @namespace   xana.sh
 // @match       *://xana.sh/*
 // @grant       GM_xmlhttpRequest
 // @version     1.0
@@ -18,7 +18,7 @@ socket.addEventListener("open", (event) => {
 });
 socket.addEventListener("message", (event) => {
     // console.log("raw request: " + event.data);
-    let [op, data] = split_once(event.data, ":");
+    let [op, data] = split_once(event.data, "\0");
     console.log(`received op ${op} data ${data}`);
     switch (op) {
         case OP_MESSAGE:
@@ -47,7 +47,7 @@ const OP_SCRAPE = "scrape";
 const OP_CONTENT = "content";
 
 function encodeOp(op, data) {
-    return op + ":" + data;
+    return op + "\0" + data;
 }
 
 //
@@ -57,7 +57,7 @@ function scrape(url) {
         url,
         responseType: "blob",
         onload: (e) => {
-            socket.send(encodeOp(OP_CONTENT, e.status + ":" + e.responseHeaders));
+            socket.send(encodeOp(OP_CONTENT, e.status + "\0" + e.responseHeaders));
             socket.send(e.response);
         },
         onerror: (e) => {
@@ -76,18 +76,3 @@ function split_once(string, separator) {
         string.substring(pos + 1),
     ]
 }
-
-// class EncodeOp {
-//     #op;
-//
-//     constructor(op) {
-//         this.op = op;
-//     }
-//
-//     encode(data) {
-//         return this.#op + ":" + data;
-//     }
-// }
-//
-// const INIT_OP = new EncodeOp("init");
-// const OP = new EncodeOp("start_page");
