@@ -20,8 +20,8 @@ socket.addEventListener("message", (event) => {
     let [op, data] = split_once(event.data, "\0");
     console.log(`received op ${op} data ${data}`);
     switch (op) {
-        case OP_MESSAGE:
-            console.log("message", data);
+        case OP_DEBUG:
+            console.log("debug", data);
             break;
         case OP_SCRAPE:
             console.log("scrape", data);
@@ -41,7 +41,7 @@ socket.addEventListener("error", (event) => {
 //
 
 const OP_INIT = "init";
-const OP_MESSAGE = "message";
+const OP_DEBUG = "debug";
 const OP_SCRAPE = "scrape";
 const OP_CONTENT = "content";
 

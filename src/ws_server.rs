@@ -75,6 +75,14 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
                 tokio::time::sleep(config.request_throttle).await;
             } else {
                 info!("no more jobs, exiting");
+                server
+                    .send(Message::text(
+                        ServerOp::Debug {
+                            text: "thanks".into(),
+                        }
+                        .encode(),
+                    ))
+                    .await?;
                 break;
             }
         } else {
@@ -147,13 +155,17 @@ impl ClientOp {
 
 enum ServerOp {
     Scrape { url: String },
+    Debug { text: String },
 }
 
 impl ServerOp {
     fn encode(&self) -> String {
         match self {
             Self::Scrape { url } => {
-                format!("scrape\0{}", url)
+                format!("scrape\0{url}")
+            }
+            Self::Debug { text } => {
+                format!("debug\0{text}")
             }
         }
     }
@@ -163,6 +175,7 @@ impl Display for ServerOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Scrape { url } => write!(f, "ScrapeOp for {url}"),
+            Self::Debug { text } => write!(f, "DebugOp for {text}"),
         }
     }
 }
