@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 xana-commons-rs = { path = "../xana-commons-rs" }
 tokio-websockets = { version = "0.12.3", features = ["server", "native-tls", "openssl"] }
-tokio = { version = "1.47.1", features = ["net", "rt-multi-thread", "macros"] }
+tokio = { version = "1.47.1", features = ["net", "rt-multi-thread", "macros", "time"] }
 futures-util = { version = "0.3.31", features = ["sink"] }
 bytes = "1.10"
 serde_json = "1.0"

@@ -6,12 +6,11 @@
 // @version     1.0
 // @author      -
 // @description 10/1/2025, 3:13:37 PM
-// @run-at document-end
+// @run-at      document-end
 // ==/UserScript==
 
 console.log("init scraper")
 
-// Create WebSocket connection.
 const socket = new WebSocket("ws://desk.f.xana.sh:8080");
 socket.addEventListener("open", (event) => {
     socket.send(encodeOp(OP_INIT, document.location));

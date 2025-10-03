@@ -1,5 +1,6 @@
 use crate::err::{ScrapeError, ScrapeResult};
 use std::backtrace::Backtrace;
+use std::time::Duration;
 
 pub fn split_once(content: &str, separator: char) -> ScrapeResult<(&str, &str)> {
     content
@@ -9,4 +10,8 @@ pub fn split_once(content: &str, separator: char) -> ScrapeResult<(&str, &str)> 
             separator,
             backtrace: Backtrace::capture(),
         })
+}
+
+pub fn format_duration(duration: Duration) -> String {
+    duration.as_secs().to_string()
 }

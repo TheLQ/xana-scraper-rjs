@@ -1,6 +1,6 @@
 use crate::err::{ScrapeError, ScrapeResult};
 use crate::jobs::ScrapeConfig;
-use crate::utils::split_once;
+use crate::utils::{format_duration, split_once};
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use std::backtrace::Backtrace;
@@ -66,8 +66,13 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
 
             if let Some(next_job) = jobs.next() {
                 active_job = next_job;
-                info!("rotating to new job {active_job:?}");
+                info!(
+                    "rotating to new job {active_job:?} in {}",
+                    format_duration(config.request_throttle)
+                );
                 expect_download_content = false;
+
+                tokio::time::sleep(config.request_throttle).await;
             } else {
                 info!("no more jobs, exiting");
                 break;
@@ -114,7 +119,7 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
                 info!("requesting {}", op);
                 server.send(Message::text(op.encode())).await?;
             } else {
-                info!("no follow up op");
+                // info!("no follow up op");
             }
         }
     }
