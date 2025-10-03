@@ -1,4 +1,5 @@
 use crate::err::{ScrapeError, ScrapeResult};
+use crate::jobs::ScrapeConfig;
 use crate::utils::split_once;
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
@@ -10,9 +11,9 @@ use std::str::FromStr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_websockets::{Config, Limits, Message, ServerBuilder};
 use xana_commons_rs::pretty_format_error;
-use xana_commons_rs::tracing_re::{error, info};
+use xana_commons_rs::tracing_re::{debug, error, info};
 
-pub async fn start_web_socket_server(port: u16) -> ScrapeResult<()> {
+pub async fn start_browser_scraper_server(port: u16, config: ScrapeConfig) -> ScrapeResult<()> {
     let addr = SocketAddr::from((IpAddr::from_str("0.0.0.0").expect("bad ip"), port));
     let listener = TcpListener::bind(addr)
         .await
@@ -22,25 +23,36 @@ pub async fn start_web_socket_server(port: u16) -> ScrapeResult<()> {
         })?;
     info!("listening on {addr}");
 
-    while let Ok((stream, _addr)) = listener.accept().await {
-        tokio::spawn(async move {
-            if let Err(e) = client_connection(stream).await {
-                error!("🛑🛑🛑 client failed, crashing {}", pretty_format_error(&e));
-                exit(1);
-            }
-        });
+    // while let Ok((stream, _addr)) = listener.accept().await {
+    //     tokio::spawn(async move {
+    //     });
+    // }
+
+    // one-shot scraper based on single config
+    let (stream, _addr) = listener.accept().await.map_err(|err| ScrapeError::NetIo {
+        err,
+        backtrace: Backtrace::capture(),
+    })?;
+    if let Err(e) = client_connection(stream, config).await {
+        error!("🛑🛑🛑 client failed, crashing {}", pretty_format_error(&e));
+        exit(1);
     }
 
     Ok(())
 }
 
-async fn client_connection(tcp_stream: TcpStream) -> ScrapeResult<()> {
+async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> ScrapeResult<()> {
+    let mut jobs = config.jobs.into_iter();
+
     info!("client connected from {}", tcp_stream.peer_addr().unwrap());
     let (_request, mut server) = ServerBuilder::new()
         .config(Config::default().frame_size(usize::MAX))
         .limits(Limits::unlimited())
         .accept(tcp_stream)
         .await?;
+
+    let mut active_job = jobs.next().unwrap();
+    info!("starting initial job {:?}", active_job);
 
     let mut expect_download_content = false;
     while let Some(response_res) = server.next().await {
@@ -49,8 +61,17 @@ async fn client_connection(tcp_stream: TcpStream) -> ScrapeResult<()> {
         if expect_download_content {
             assert!(message_raw.is_binary());
             let content: BytesMut = message_raw.into_payload().into();
-            info!("received content of size {}", content.len());
-            expect_download_content = false;
+            debug!("received content of size {}", content.len());
+            active_job.write_content(&content)?;
+
+            if let Some(next_job) = jobs.next() {
+                active_job = next_job;
+                info!("rotating to new job {active_job:?}");
+                expect_download_content = false;
+            } else {
+                info!("no more jobs, exiting");
+                break;
+            }
         } else {
             let message = match message_raw.as_text() {
                 Some(e) => e,
@@ -66,11 +87,24 @@ async fn client_connection(tcp_stream: TcpStream) -> ScrapeResult<()> {
                     info!("client init at {}", current_page);
 
                     Some(ServerOp::Scrape {
-                        url: "https://xana.sh/Aelitasupercomputer.jpg".into(),
+                        url: active_job.url.clone(),
                     })
                 }
                 ClientOp::Content { headers_raw } => {
-                    info!("client headers: {headers_raw}");
+                    let (status_raw, headers) = split_once(&headers_raw, ':')?;
+                    let status: u16 = match status_raw.parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            return Err(ScrapeError::InvalidStatus {
+                                raw_str: headers_raw,
+                                backtrace: Backtrace::capture(),
+                            });
+                        }
+                    };
+
+                    active_job.write_response_headers(headers)?;
+                    active_job.write_status(status)?;
+
                     expect_download_content = true;
                     None
                 }

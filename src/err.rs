@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
-use xana_commons_rs::MyBacktrace;
+use xana_commons_rs::{MyBacktrace, SimpleIoError};
 
 pub type ScrapeResult<T> = Result<T, ScrapeError>;
 
@@ -19,9 +19,16 @@ pub enum ScrapeError {
         raw: Bytes,
         backtrace: Backtrace,
     },
+    InvalidStatus {
+        raw_str: String,
+        backtrace: Backtrace,
+    },
     NetIo {
         err: std::io::Error,
         backtrace: Backtrace,
+    },
+    FileIo {
+        err: SimpleIoError,
     },
 }
 
@@ -31,7 +38,9 @@ impl MyBacktrace for ScrapeError {
             ScrapeError::SplitFailed { backtrace, .. } => backtrace,
             ScrapeError::TokioWebsocket { backtrace, .. } => backtrace,
             ScrapeError::ContentNotText { backtrace, .. } => backtrace,
+            ScrapeError::InvalidStatus { backtrace, .. } => backtrace,
             ScrapeError::NetIo { backtrace, .. } => backtrace,
+            ScrapeError::FileIo { err } => err.my_backtrace(),
         }
     }
 }
@@ -48,16 +57,22 @@ impl Display for ScrapeError {
                 write!(f, "tokio websocket error: {}", err)
             }
             ScrapeError::ContentNotText { raw, .. } => {
+                let sub = &raw[0..raw.len().min(10)];
                 write!(
                     f,
-                    "content is not text: len {} starts_with {} ...",
+                    "content is not text: len {} starts_with {} ... {}",
                     raw.len(),
-                    String::from_utf8_lossy(&raw[0..10])
+                    String::from_utf8_lossy(sub),
+                    xana_commons_rs::to_hex_any(sub)
                 )
+            }
+            ScrapeError::InvalidStatus { raw_str, .. } => {
+                write!(f, "can't get status from {raw_str}")
             }
             ScrapeError::NetIo { err, .. } => {
                 write!(f, "net io: {}", err)
             }
+            ScrapeError::FileIo { err } => Display::fmt(err, f),
         }
     }
 }
@@ -68,5 +83,11 @@ impl From<tokio_websockets::Error> for ScrapeError {
             err,
             backtrace: Backtrace::capture(),
         }
+    }
+}
+
+impl From<SimpleIoError> for ScrapeError {
+    fn from(err: SimpleIoError) -> Self {
+        ScrapeError::FileIo { err }
     }
 }
