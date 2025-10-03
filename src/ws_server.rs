@@ -106,14 +106,11 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
                 }
                 ClientOp::Content { headers_raw } => {
                     let (status_raw, headers) = split_once(&headers_raw, '\0')?;
-                    let status: u16 = match status_raw.parse() {
-                        Ok(v) => v,
-                        Err(_) => {
-                            return Err(ScrapeError::InvalidStatus {
-                                raw_str: headers_raw,
-                                backtrace: Backtrace::capture(),
-                            });
-                        }
+                    let Ok(status) = status_raw.parse::<u16>() else {
+                        return Err(ScrapeError::InvalidStatus {
+                            raw_str: headers_raw,
+                            backtrace: Backtrace::capture(),
+                        });
                     };
 
                     active_job.write_response_headers(headers)?;
