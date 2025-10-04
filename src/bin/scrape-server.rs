@@ -38,7 +38,7 @@ async fn start() -> ScrapeResult<()> {
         //     referer: "https://xana.sh/".into(),
         //     output: PathBuf::from("./tmpout/xanatest.jpg"),
         // }],
-        request_throttle: Duration::from_secs(1),
+        request_throttle: Duration::from_secs(5),
     };
 
     let job_receiver = start_comms_server(42_000, shutdown.clone()).await?;
