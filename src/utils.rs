@@ -1,6 +1,9 @@
 use crate::err::{ScrapeError, ScrapeResult};
 use std::backtrace::Backtrace;
+use std::net::Ipv4Addr;
 use std::time::Duration;
+
+pub const ANY_ADDR: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 
 pub fn split_once(content: &str, separator: char) -> ScrapeResult<(&str, &str)> {
     content

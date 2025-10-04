@@ -1,28 +1,40 @@
-use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use xana_commons_rs::tracing_re::{error, info};
 use xana_commons_rs::{XanaCommonsLogConfig, log_init_trace, pretty_format_error};
-use xana_scraper_rjs::{ScrapeConfig, ScrapeJob, start_browser_scraper_server};
+use xana_scraper_rjs::{
+    ScrapeConfig, ScrapeResult, start_browser_scraper_server, start_comms_server,
+};
 
 #[tokio::main]
 async fn main() -> ExitCode {
     log_init_trace(XanaCommonsLogConfig::default());
 
-    let config = ScrapeConfig {
-        jobs: vec![ScrapeJob {
-            url: "https://xana.sh/Aelitasupercomputer.jpg".into(),
-            referer: "https://xana.sh/".into(),
-            output: PathBuf::from("./tmpout/xanatest.jpg"),
-        }],
-        request_throttle: Duration::from_secs(1),
-    };
-
-    if let Err(e) = start_browser_scraper_server(8080, config).await {
+    if let Err(e) = start().await {
         error!("🛑🛑🛑 failed main {}", pretty_format_error(&e));
         ExitCode::FAILURE
     } else {
         info!("exiting cleanly");
         ExitCode::SUCCESS
     }
+}
+
+async fn start() -> ScrapeResult<()> {
+    let shutdown = Arc::new(Notify::new());
+    let config = ScrapeConfig {
+        // jobs: vec![ScrapeJob {
+        //     url: "https://xana.sh/Aelitasupercomputer.jpg".into(),
+        //     referer: "https://xana.sh/".into(),
+        //     output: PathBuf::from("./tmpout/xanatest.jpg"),
+        // }],
+        request_throttle: Duration::from_secs(1),
+    };
+
+    let job_receiver = start_comms_server(42_000, shutdown.clone()).await?;
+    start_browser_scraper_server(8080, config, job_receiver, shutdown.clone()).await?;
+
+    shutdown.notified().await;
+    Ok(())
 }

@@ -37,6 +37,5 @@ impl ScrapeJob {
 
 #[derive(Serialize, Deserialize)]
 pub struct ScrapeConfig {
-    pub jobs: Vec<ScrapeJob>,
     pub request_throttle: Duration,
 }

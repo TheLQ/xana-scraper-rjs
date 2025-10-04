@@ -1,39 +1,54 @@
-use crate::err::{ScrapeError, ScrapeResult};
+use crate::comms_server::WsScrapeJob;
+use crate::err::{MapNetIoError, ScrapeError, ScrapeResult};
 use crate::jobs::ScrapeConfig;
-use crate::utils::{format_duration, split_once};
+use crate::utils::{ANY_ADDR, format_duration, split_once};
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::process::exit;
-use std::str::FromStr;
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_websockets::{Config, Limits, Message, ServerBuilder};
 use xana_commons_rs::pretty_format_error;
 use xana_commons_rs::tracing_re::{debug, error, info};
 
-pub async fn start_browser_scraper_server(port: u16, config: ScrapeConfig) -> ScrapeResult<()> {
-    let addr = SocketAddr::from((IpAddr::from_str("0.0.0.0").expect("bad ip"), port));
-    let listener = TcpListener::bind(addr)
-        .await
-        .map_err(|err| ScrapeError::NetIo {
-            err,
-            backtrace: Backtrace::capture(),
-        })?;
-    info!("listening on {addr}");
+pub async fn start_browser_scraper_server(
+    ws_port: u16,
+    config: ScrapeConfig,
+    job_receiver: UnboundedReceiver<WsScrapeJob>,
+    shutdown: Arc<Notify>,
+) -> ScrapeResult<()> {
+    let ws_addr = SocketAddr::from((ANY_ADDR, ws_port));
+    let ws_listener = TcpListener::bind(ws_addr).await.map_net_error(ws_addr)?;
+    info!("Websocket listening on {ws_addr}");
 
-    // while let Ok((stream, _addr)) = listener.accept().await {
-    //     tokio::spawn(async move {
-    //     });
-    // }
+    tokio::spawn(async move {
+        if let Err(e) = ws_server(config, ws_listener, job_receiver).await {
+            error!("comms failed {}", pretty_format_error(&e));
+        } else {
+            info!("comms terminated");
+        }
+        shutdown.notify_one();
+    });
 
+    Ok(())
+}
+
+async fn ws_server(
+    config: ScrapeConfig,
+    server: TcpListener,
+    job_receiver: UnboundedReceiver<WsScrapeJob>,
+) -> ScrapeResult<()> {
     // one-shot scraper based on single config
-    let (stream, _addr) = listener.accept().await.map_err(|err| ScrapeError::NetIo {
-        err,
-        backtrace: Backtrace::capture(),
-    })?;
-    if let Err(e) = client_connection(stream, config).await {
+    let (stream, _addr) = server
+        .accept()
+        .await
+        .map_net_error(server.local_addr().unwrap())?;
+    if let Err(e) = client_connection(stream, config, job_receiver).await {
         error!("🛑🛑🛑 client failed, crashing {}", pretty_format_error(&e));
         exit(1);
     }
@@ -41,18 +56,23 @@ pub async fn start_browser_scraper_server(port: u16, config: ScrapeConfig) -> Sc
     Ok(())
 }
 
-async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> ScrapeResult<()> {
-    let mut jobs = config.jobs.into_iter();
-
-    info!("client connected from {}", tcp_stream.peer_addr().unwrap());
+async fn client_connection(
+    tcp_stream: TcpStream,
+    config: ScrapeConfig,
+    mut job_receiver: UnboundedReceiver<WsScrapeJob>,
+) -> ScrapeResult<()> {
+    info!(
+        "ws client connected from {}",
+        tcp_stream.peer_addr().unwrap()
+    );
     let (_request, mut server) = ServerBuilder::new()
         .config(Config::default().frame_size(usize::MAX))
         .limits(Limits::unlimited())
         .accept(tcp_stream)
         .await?;
 
-    let mut active_job = jobs.next().unwrap();
-    info!("starting initial job {:?}", active_job);
+    let mut active_job = job_receiver.recv().await.unwrap();
+    info!("starting initial job {:?}", active_job.job);
 
     let mut expect_download_content = false;
     while let Some(response_res) = server.next().await {
@@ -62,29 +82,30 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
             assert!(message_raw.is_binary());
             let content: BytesMut = message_raw.into_payload().into();
             debug!("received content of size {}", content.len());
-            active_job.write_content(&content)?;
+            active_job.job.write_content(&content)?;
 
-            if let Some(next_job) = jobs.next() {
-                active_job = next_job;
-                info!(
-                    "rotating to new job {active_job:?} in {}",
-                    format_duration(config.request_throttle)
-                );
-                expect_download_content = false;
+            // if let Some(next_job) = jobs.next() {
+            active_job = job_receiver.recv().await.unwrap();
+            info!(
+                "rotating to new job {:?} in {}",
+                active_job.job,
+                format_duration(config.request_throttle)
+            );
+            expect_download_content = false;
 
-                tokio::time::sleep(config.request_throttle).await;
-            } else {
-                info!("no more jobs, exiting");
-                server
-                    .send(Message::text(
-                        ServerOp::Debug {
-                            text: "thanks".into(),
-                        }
-                        .encode(),
-                    ))
-                    .await?;
-                break;
-            }
+            tokio::time::sleep(config.request_throttle).await;
+            // } else {
+            //     info!("no more jobs, exiting");
+            //     server
+            //         .send(Message::text(
+            //             ServerOp::Debug {
+            //                 text: "thanks".into(),
+            //             }
+            //             .encode(),
+            //         ))
+            //         .await?;
+            //     break;
+            // }
         } else {
             let message = match message_raw.as_text() {
                 Some(e) => e,
@@ -100,8 +121,8 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
                     info!("client init at {}", current_page);
 
                     Some(ServerOp::Scrape {
-                        url: active_job.url.clone(),
-                        referer: active_job.referer.clone(),
+                        url: active_job.job.url.clone(),
+                        referer: active_job.job.referer.clone(),
                     })
                 }
                 ClientOp::Content { headers_raw } => {
@@ -113,8 +134,8 @@ async fn client_connection(tcp_stream: TcpStream, config: ScrapeConfig) -> Scrap
                         });
                     };
 
-                    active_job.write_response_headers(headers)?;
-                    active_job.write_status(status)?;
+                    active_job.job.write_response_headers(headers)?;
+                    active_job.job.write_status(status)?;
 
                     expect_download_content = true;
                     None
