@@ -75,6 +75,7 @@ async fn client_connection(
     info!("starting initial job {:?}", active_job.job);
 
     let mut expect_download_content = false;
+    let mut last_status = None;
     while let Some(response_res) = server.next().await {
         let message_raw = response_res?;
 
@@ -82,8 +83,9 @@ async fn client_connection(
             assert!(message_raw.is_binary());
             let content: BytesMut = message_raw.into_payload().into();
             debug!(
-                "received content of size {}. Sleeping for {}",
+                "received content size {} status {}. Sleeping for {}",
                 content.len(),
+                last_status.unwrap(),
                 format_duration(config.request_throttle)
             );
             active_job.job.write_content(&content)?;
@@ -95,6 +97,7 @@ async fn client_connection(
             active_job = job_receiver.recv().await.unwrap();
             info!("rotating to new job {:?}", active_job.job);
             expect_download_content = false;
+            last_status = None;
 
             send_job(&active_job, &mut server).await?;
             // } else {
@@ -135,6 +138,7 @@ async fn client_connection(
 
                     active_job.job.write_response_headers(headers)?;
                     active_job.job.write_status(status)?;
+                    last_status = Some(status);
 
                     expect_download_content = true;
                 }
