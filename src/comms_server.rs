@@ -16,7 +16,7 @@ pub async fn start_comms_server(
     shutdown: Arc<Notify>,
 ) -> ScrapeResult<UnboundedReceiver<WsScrapeJob>> {
     let comms_addr = SocketAddr::from((ANY_ADDR, comms_port));
-    let mut comms_listener = TcpListener::bind(comms_addr)
+    let comms_listener = TcpListener::bind(comms_addr)
         .await
         .map_net_error(comms_addr)?;
     info!("Comms listening on {comms_addr}");

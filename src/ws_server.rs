@@ -1,4 +1,3 @@
-use crate::ScrapeJob;
 use crate::comms_server::WsScrapeJob;
 use crate::err::{MapNetIoError, ScrapeError, ScrapeResult};
 use crate::jobs::ScrapeConfig;
