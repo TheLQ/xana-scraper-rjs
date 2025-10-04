@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-use xana_commons_rs::{MyBacktrace, SimpleIoError};
+use xana_commons_rs::{MyBacktrace, SimpleIoError, SimpleNetError};
 
 pub type ScrapeResult<T> = Result<T, ScrapeError>;
 
@@ -29,9 +29,7 @@ pub enum ScrapeError {
         backtrace: Backtrace,
     },
     NetIo {
-        err: std::io::Error,
-        addr: SocketAddr,
-        backtrace: Backtrace,
+        err: SimpleNetError,
     },
     FileIo {
         err: SimpleIoError,
@@ -46,7 +44,7 @@ impl MyBacktrace for ScrapeError {
             ScrapeError::ContentNotText { backtrace, .. } => backtrace,
             ScrapeError::InvalidStatus { backtrace, .. } => backtrace,
             ScrapeError::SerdeJson { backtrace, .. } => backtrace,
-            ScrapeError::NetIo { backtrace, .. } => backtrace,
+            ScrapeError::NetIo { err, .. } => err.my_backtrace(),
             ScrapeError::FileIo { err } => err.my_backtrace(),
         }
     }
@@ -79,9 +77,7 @@ impl Display for ScrapeError {
             ScrapeError::SerdeJson { err, .. } => {
                 write!(f, "serde json error: {err}")
             }
-            ScrapeError::NetIo { err, addr, .. } => {
-                write!(f, "net io at {addr}: {err}")
-            }
+            ScrapeError::NetIo { err } => Display::fmt(err, f),
             ScrapeError::FileIo { err } => Display::fmt(err, f),
         }
     }
@@ -111,16 +107,8 @@ impl From<SimpleIoError> for ScrapeError {
     }
 }
 
-pub trait MapNetIoError<T> {
-    fn map_net_error(self, addr: SocketAddr) -> Result<T, ScrapeError>;
-}
-
-impl<T> MapNetIoError<T> for Result<T, std::io::Error> {
-    fn map_net_error(self, addr: SocketAddr) -> Result<T, ScrapeError> {
-        self.map_err(|err| ScrapeError::NetIo {
-            err,
-            addr,
-            backtrace: Backtrace::capture(),
-        })
+impl From<SimpleNetError> for ScrapeError {
+    fn from(err: SimpleNetError) -> Self {
+        ScrapeError::NetIo { err }
     }
 }

@@ -1,5 +1,5 @@
 use crate::ScrapeJob;
-use crate::err::{MapNetIoError, ScrapeResult};
+use crate::err::ScrapeResult;
 use crate::utils::ANY_ADDR;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -8,8 +8,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use xana_commons_rs::pretty_format_error;
 use xana_commons_rs::tracing_re::{debug, error, info, warn};
+use xana_commons_rs::{MapNetIoError, pretty_format_error};
 
 pub async fn start_comms_server(
     comms_port: u16,

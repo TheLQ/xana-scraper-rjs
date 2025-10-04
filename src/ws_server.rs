@@ -1,5 +1,5 @@
 use crate::comms_server::WsScrapeJob;
-use crate::err::{MapNetIoError, ScrapeError, ScrapeResult};
+use crate::err::{ScrapeError, ScrapeResult};
 use crate::jobs::ScrapeConfig;
 use crate::utils::{ANY_ADDR, format_duration, split_once};
 use bytes::BytesMut;
@@ -13,8 +13,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_websockets::{Config, Limits, Message, ServerBuilder, WebSocketStream};
-use xana_commons_rs::pretty_format_error;
 use xana_commons_rs::tracing_re::{debug, error, info};
+use xana_commons_rs::{MapNetIoError, pretty_format_error};
 
 pub async fn start_browser_scraper_server(
     ws_port: u16,

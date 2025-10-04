@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::ExitCode;
 use xana_commons_rs::tracing_re::{error, info};
-use xana_commons_rs::{XanaCommonsLogConfig, log_init_trace, pretty_format_error};
-use xana_scraper_rjs::{CommsOp, MapNetIoError, ScrapeJob, ScrapeResult};
+use xana_commons_rs::{MapNetIoError, XanaCommonsLogConfig, log_init_trace, pretty_format_error};
+use xana_scraper_rjs::{CommsOp, ScrapeJob, ScrapeResult};
 
 fn main() -> ExitCode {
     log_init_trace(XanaCommonsLogConfig::default());
