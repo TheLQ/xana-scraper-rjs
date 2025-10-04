@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::runtime::Builder;
 use tokio::sync::Notify;
 use xana_commons_rs::tracing_re::{error, info};
 use xana_commons_rs::{XanaCommonsLogConfig, log_init_trace, pretty_format_error};
@@ -8,11 +9,19 @@ use xana_scraper_rjs::{
     ScrapeConfig, ScrapeResult, start_browser_scraper_server, start_comms_server,
 };
 
-#[tokio::main]
-async fn main() -> ExitCode {
-    log_init_trace(XanaCommonsLogConfig::default());
+fn main() -> ExitCode {
+    log_init_trace(XanaCommonsLogConfig {
+        map_huge_crate_names: [("xana_scraper_rjs", "xs")].into_iter().collect(),
+        ..Default::default()
+    });
 
-    if let Err(e) = start().await {
+    let runtime = Builder::new_multi_thread()
+        .thread_name("tokw")
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
+    if let Err(e) = runtime.block_on(async { start().await }) {
         error!("🛑🛑🛑 failed main {}", pretty_format_error(&e));
         ExitCode::FAILURE
     } else {

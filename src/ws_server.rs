@@ -1,3 +1,4 @@
+use crate::ScrapeJob;
 use crate::comms_server::WsScrapeJob;
 use crate::err::{MapNetIoError, ScrapeError, ScrapeResult};
 use crate::jobs::ScrapeConfig;
@@ -12,7 +13,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio_websockets::{Config, Limits, Message, ServerBuilder};
+use tokio_websockets::{Config, Limits, Message, ServerBuilder, WebSocketStream};
 use xana_commons_rs::pretty_format_error;
 use xana_commons_rs::tracing_re::{debug, error, info};
 
@@ -81,19 +82,22 @@ async fn client_connection(
         if expect_download_content {
             assert!(message_raw.is_binary());
             let content: BytesMut = message_raw.into_payload().into();
-            debug!("received content of size {}", content.len());
+            debug!(
+                "received content of size {}. Sleeping for {}",
+                content.len(),
+                format_duration(config.request_throttle)
+            );
             active_job.job.write_content(&content)?;
+            active_job.on_complete.notify_one();
+
+            tokio::time::sleep(config.request_throttle).await;
 
             // if let Some(next_job) = jobs.next() {
             active_job = job_receiver.recv().await.unwrap();
-            info!(
-                "rotating to new job {:?} in {}",
-                active_job.job,
-                format_duration(config.request_throttle)
-            );
+            info!("rotating to new job {:?}", active_job.job);
             expect_download_content = false;
 
-            tokio::time::sleep(config.request_throttle).await;
+            send_job(&active_job, &mut server).await?;
             // } else {
             //     info!("no more jobs, exiting");
             //     server
@@ -116,14 +120,10 @@ async fn client_connection(
                     });
                 }
             };
-            let op = match ClientOp::parse(message)? {
+            match ClientOp::parse(message)? {
                 ClientOp::Init { current_page } => {
                     info!("client init at {}", current_page);
-
-                    Some(ServerOp::Scrape {
-                        url: active_job.job.url.clone(),
-                        referer: active_job.job.referer.clone(),
-                    })
+                    send_job(&active_job, &mut server).await?;
                 }
                 ClientOp::Content { headers_raw } => {
                     let (status_raw, headers) = split_once(&headers_raw, '\0')?;
@@ -138,18 +138,23 @@ async fn client_connection(
                     active_job.job.write_status(status)?;
 
                     expect_download_content = true;
-                    None
                 }
             };
-
-            if let Some(op) = op {
-                info!("requesting {}", op);
-                server.send(Message::text(op.encode())).await?;
-            } else {
-                // info!("no follow up op");
-            }
         }
     }
+    Ok(())
+}
+
+async fn send_job(
+    active_job: &WsScrapeJob,
+    stream: &mut WebSocketStream<TcpStream>,
+) -> ScrapeResult<()> {
+    let op = ServerOp::Scrape {
+        url: active_job.job.url.clone(),
+        referer: active_job.job.referer.clone(),
+    };
+    info!("requesting {}", op);
+    stream.send(Message::text(op.encode())).await?;
     Ok(())
 }
 
