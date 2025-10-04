@@ -1,7 +1,6 @@
 use bytes::Bytes;
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
 use xana_commons_rs::{MyBacktrace, SimpleIoError, SimpleNetError};
 
 pub type ScrapeResult<T> = Result<T, ScrapeError>;
